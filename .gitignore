@@ -1,0 +1,16 @@
+# Data & caches
+/data/
+/audio/
+__pycache__/
+*.pyc
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# venv
+.venv/
+venv/
+
+# whisper model cache
+*.pt

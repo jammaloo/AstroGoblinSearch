@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ channel }} — Transcript Search</title>
+  <style>
+    :root {
+      --bg: #0f1117; --panel: #171a23; --panel-2: #1f2330; --border: #2a2f3d;
+      --text: #e6e8ee; --muted: #8b93a7; --accent: #ff3b3b; --accent-2: #ff7878;
+      --mark-bg: #f5d061; --mark-text: #1a1a1a; --link: #6cb6ff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg); color: var(--text); line-height: 1.55;
+    }
+    header.top {
+      border-bottom: 1px solid var(--border); padding: 22px 24px;
+      background: linear-gradient(180deg, #161922, var(--bg));
+    }
+    .wrap { max-width: 880px; margin: 0 auto; padding: 0 20px; }
+    header.top h1 { margin: 0 0 4px; font-size: 1.45rem; letter-spacing: -0.01em; }
+    header.top h1 .ac { color: var(--accent); }
+    .meta { color: var(--muted); font-size: 0.9rem; }
+    .meta b { color: var(--text); font-weight: 600; }
+    .search { padding: 30px 0 8px; }
+    form.s { display: flex; gap: 10px; }
+    form.s input {
+      flex: 1; padding: 13px 15px; font-size: 1rem; border-radius: 10px;
+      border: 1px solid var(--border); background: var(--panel); color: var(--text);
+    }
+    form.s input:focus { outline: none; border-color: var(--accent-2); }
+    form.s button {
+      padding: 13px 22px; font-size: 1rem; font-weight: 600; cursor: pointer;
+      border: none; border-radius: 10px; background: var(--accent); color: #fff;
+    }
+    form.s button:hover { background: var(--accent-2); }
+    .hint { color: var(--muted); font-size: 0.85rem; margin-top: 8px; }
+    .result-summary { color: var(--muted); font-size: 0.95rem; margin: 22px 0 4px; }
+    .result-summary b { color: var(--text); }
+    .video { margin: 22px 0; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); overflow: hidden; }
+    .video-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; padding: 14px 16px; background: var(--panel-2); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+    .video-head .title { font-weight: 600; }
+    .video-head .title a { color: var(--text); text-decoration: none; }
+    .video-head .title a:hover { color: var(--link); }
+    .video-head .info { color: var(--muted); font-size: 0.82rem; white-space: nowrap; }
+    .match { padding: 12px 16px; border-top: 1px solid var(--border); display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: start; }
+    .match:first-of-type { border-top: none; }
+    .ts a {
+      display: inline-block; min-width: 64px; text-align: center; padding: 5px 10px;
+      border-radius: 7px; background: var(--accent); color: #fff; font-weight: 600;
+      text-decoration: none; font-variant-numeric: tabular-nums; font-size: 0.85rem;
+    }
+    .ts a:hover { background: var(--accent-2); }
+    .snip { color: #cdd2de; }
+    mark { background: var(--mark-bg); color: var(--mark-text); border-radius: 3px; padding: 0 2px; }
+    .empty { color: var(--muted); padding: 40px 0; text-align: center; }
+    footer { color: var(--muted); font-size: 0.8rem; text-align: center; padding: 40px 0 30px; }
+    @media (max-width: 560px) { .match { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <div class="wrap">
+      <h1><span class="ac">{{ channel }}</span> · Transcript Search</h1>
+      <div class="meta">
+        <b>{{ stats.done }}</b> of {{ stats.total }} videos indexed
+        · {{ stats.pending }} pending{% if stats.failed %} · {{ stats.failed }} failed{% endif %}
+        {% if stats.last_indexed %} · last indexed: <b>{{ stats.last_indexed }}</b>{% endif %}
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="search">
+      <form class="s" method="get" action="/">
+        <input type="text" name="q" value="{{ query }}" placeholder="Search spoken words across every video…" autofocus autocomplete="off">
+        <button type="submit">Search</button>
+      </form>
+      <div class="hint">Matches link straight to the moment in the video where it was said.</div>
+    </section>
+
+    {% if query %}
+      {% if results %}
+        <div class="result-summary">
+          <b>{{ match_count }}</b> match(es) in <b>{{ video_count }}</b> video(s) for “{{ query }}”
+        </div>
+        {% for v in results %}
+          <article class="video">
+            <div class="video-head">
+              <span class="title">
+                <a href="https://www.youtube.com/watch?v={{ v.youtube_id }}" target="_blank" rel="noopener">{{ v.title }}</a>
+              </span>
+              <span class="info">{{ v.upload_date or '—' }} · {{ v.matches|length }} match(es)</span>
+            </div>
+            {% for m in v.matches %}
+              <div class="match">
+                <span class="ts"><a href="{{ m.link }}" target="_blank" rel="noopener">{{ m.time }}</a></span>
+                <span class="snip">…{{ m.snippet_html }}…</span>
+              </div>
+            {% endfor %}
+          </article>
+        {% endfor %}
+      {% else %}
+        <div class="empty">No matches found for “{{ query }}”.</div>
+      {% endif %}
+    {% endif %}
+
+    <footer>Searches every indexed transcript. New videos are picked up daily.</footer>
+  </main>
+</body>
+</html>
