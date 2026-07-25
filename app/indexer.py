@@ -113,10 +113,50 @@ def index_one(video) -> None:
             db.update_video_meta(conn, vid, **meta)
         clean_text, segments = transcribe.transcribe(audio_path)
         with db.transaction() as conn:
-            db.store_transcript(conn, vid, clean_text, segments)
+            db.store_transcript(conn, vid, clean_text, segments, model=current_model_label())
         print(f"  done — {len(segments)} segments")
     finally:
         audio_path.unlink(missing_ok=True)
+
+
+def current_model_label() -> str:
+    """The transcriber identity stamped on every transcript this run produces
+    (e.g. 'whisper.small'), so older transcriptions can be identified and
+    incrementally re-done when a better model is configured."""
+    return f"whisper.{config.WHISPER_MODEL}"
+
+
+def run_retranscribe(limit: int | None = None) -> int:
+    """Re-transcribe done videos whose stored model differs from the current one
+    (oldest-first), upgrading them to the configured model. New/pending videos
+    are left to a normal `run`. Returns count upgraded."""
+    db.init_db()
+    target = current_model_label()
+    if limit is None:
+        limit = config.MAX_VIDEOS_PER_RUN
+
+    conn = db.get_conn()
+    candidates = [dict(r) for r in db.retranscribe_candidates(conn, target, limit)]
+    conn.close()
+
+    n = len(candidates)
+    if n == 0:
+        print(f"[indexer] nothing to retranscribe — all done videos already at {target}")
+        return 0
+    print(f"[indexer] retranscribing {n} video(s) to {target} oldest-first")
+
+    ok = 0
+    for i, v in enumerate(candidates, 1):
+        print(f"[{i}/{n}] {v['title']}  ({v['youtube_id']})  [was {v.get('model') or 'unknown'}]")
+        try:
+            index_one(v)
+            ok += 1
+        except Exception as e:  # noqa: BLE001
+            print(f"  FAILED: {e}")
+            with db.transaction() as conn:
+                db.mark_failed(conn, v["id"], str(e))
+    print(f"[indexer] retranscribe finished: {ok}/{n} upgraded")
+    return ok
 
 
 def run(limit: int | None = None) -> int:

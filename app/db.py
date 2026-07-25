@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS videos (
     discovered_order INTEGER NOT NULL DEFAULT 0,  -- playlist position, 0 = newest
     status          TEXT NOT NULL DEFAULT 'pending',  -- pending|processing|done|failed
     clean_text      TEXT,          -- full clean transcript
+    model           TEXT,          -- transcriber used, e.g. "whisper.small"
     indexed_at      TEXT,          -- ISO timestamp when fully indexed
     error           TEXT
 );
@@ -78,9 +79,17 @@ def transaction() -> sqlite3.Connection:
     finally:
         conn.close()
 
-
 def init_db() -> None:
     with transaction() as conn:
+        conn.executescript(SCHEMA)
+        _migrate(conn)
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Additive migrations for databases created before a feature shipped."""
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(videos)")}
+    if "model" not in cols:
+        conn.execute("ALTER TABLE videos ADD COLUMN model TEXT")
         conn.executescript(SCHEMA)
 
 
@@ -136,19 +145,12 @@ def upsert_discovered_video(
 def set_video_processing(conn: sqlite3.Connection, video_id: int) -> None:
     conn.execute("UPDATE videos SET status = 'processing' WHERE id = ?", (video_id,))
 
-
-def mark_failed(conn: sqlite3.Connection, video_id: int, error: str) -> None:
-    conn.execute(
-        "UPDATE videos SET status = 'failed', error = ? WHERE id = ?",
-        (error[:500], video_id),
-    )
-
-
 def store_transcript(
     conn: sqlite3.Connection,
     video_id: int,
     clean_text: str,
     segments: Iterable[dict[str, Any]],
+    model: str | None = None,
 ) -> None:
     """Persist the full clean transcript and every timecoded segment (+ FTS rows)."""
     # Replace any prior transcript for this video (idempotent re-index).
@@ -179,9 +181,9 @@ def store_transcript(
 
     conn.execute(
         """UPDATE videos
-           SET status = 'done', indexed_at = datetime('now'), error = NULL
+           SET status = 'done', indexed_at = datetime('now'), error = NULL, model = ?
            WHERE id = ?""",
-        (video_id,),
+        (model, video_id),
     )
 
 
@@ -211,6 +213,21 @@ def pending_videos(conn: sqlite3.Connection, limit: int) -> list[sqlite3.Row]:
     if limit and limit > 0:
         sql += " LIMIT ?"
         params = (limit,)
+    return conn.execute(sql, params).fetchall()
+
+
+def retranscribe_candidates(conn: sqlite3.Connection, current_model: str, limit: int) -> list[sqlite3.Row]:
+    """Done videos not already transcribed with `current_model` (NULL counts as
+    stale), oldest-first — the set an incremental upgrade run would redo."""
+    sql = (
+        "SELECT * FROM videos WHERE status = 'done' "
+        "AND (model IS NULL OR model != ?) "
+        "ORDER BY discovered_order DESC, id ASC"
+    )
+    params: tuple[Any, ...] = (current_model,)
+    if limit and limit > 0:
+        sql += " LIMIT ?"
+        params = (current_model, limit)
     return conn.execute(sql, params).fetchall()
 
 

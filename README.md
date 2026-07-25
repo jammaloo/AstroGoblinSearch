@@ -67,14 +67,28 @@ With 255 videos and the `small` model on a GTX 1660, expect roughly 15–60 s pe
 video. The daily cron keeps a bounded batch so each run finishes quickly; an
 unlimited run (`-n 0`) will chew through the whole backfill if left running.
 
-### 2. Run the search UI
+### 2. Upgrade transcripts to a better model (incremental retranscribe)
+
+Every transcript records the model that produced it (e.g. `whisper.small`) in the
+`videos.model` column. To re-transcribe only the videos done with an older model,
+set the new model and run `--retranscribe` — it re-does done videos whose stored
+model differs from the current one, oldest-first:
+
+```bash
+AGS_WHISPER_MODEL=medium python3 run_indexer.py --retranscribe      # next batch
+AGS_WHISPER_MODEL=medium python3 run_indexer.py --retranscribe -n 0 # all of them
+```
+
+New/pending videos are untouched — they're handled by the normal run/cron above.
+
+### 3. Run the search UI
 
 ```bash
 python3 run_server.py
 # open http://127.0.0.1:5000
 ```
 
-### 3. Daily cron
+### 4. Daily cron
 
 ```bash
 crontab -e

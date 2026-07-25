@@ -5,6 +5,7 @@ Usage:
     python run_indexer.py            # process up to AGS_MAX_VIDEOS_PER_RUN (default 10)
     python run_indexer.py -n 0       # unlimited backfill run
     python run_indexer.py -n 5       # exactly 5 videos this run
+    python run_indexer.py --retranscribe   # upgrade done videos to the current model
 """
 import argparse
 
@@ -19,8 +20,16 @@ def main() -> None:
         "-n", "--limit", type=int, default=None,
         help="max videos to transcribe this run (0 = unlimited; default: AGS_MAX_VIDEOS_PER_RUN)",
     )
+    parser.add_argument(
+        "--retranscribe", action="store_true",
+        help="re-transcribe done videos whose stored model differs from the current "
+             "AGS_WHISPER_MODEL (incremental upgrade), instead of processing new ones",
+    )
     args = parser.parse_args()
-    indexer.run(limit=args.limit)
+    if args.retranscribe:
+        indexer.run_retranscribe(limit=args.limit)
+    else:
+        indexer.run(limit=args.limit)
 
 
 if __name__ == "__main__":
