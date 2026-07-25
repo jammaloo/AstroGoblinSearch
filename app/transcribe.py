@@ -14,8 +14,9 @@ _model: whisper.Whisper | None = None
 def get_model() -> whisper.Whisper:
     global _model
     if _model is None:
-        print(f"[whisper] loading model '{config.WHISPER_MODEL}' on {config.WHISPER_DEVICE}…")
-        _model = whisper.load_model(config.WHISPER_MODEL, device=config.WHISPER_DEVICE)
+        device = config.resolve_device()
+        print(f"[whisper] loading model '{config.WHISPER_MODEL}' on {device}…")
+        _model = whisper.load_model(config.WHISPER_MODEL, device=device)
     return _model
 
 

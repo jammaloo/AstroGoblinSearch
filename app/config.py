@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import os
-import torch
 from pathlib import Path
 
 # --- Paths ------------------------------------------------------------------
@@ -24,8 +23,20 @@ CHANNEL_NAME = os.environ.get("AGS_CHANNEL_NAME", "Astrogoblin")
 # small = ~2 GB VRAM, fast + accurate on a GTX 1660. Bump to "medium" / "large"
 # for higher accuracy at the cost of speed and memory.
 WHISPER_MODEL = os.environ.get("AGS_WHISPER_MODEL", "small")
-WHISPER_DEVICE = os.environ.get("AGS_DEVICE", "cuda" if torch.cuda.is_available() else "cpu")
-# astrogoblin's content is English; pinning speeds it up and avoids misdetects.
+WHISPER_DEVICE = os.environ.get("AGS_DEVICE", "")  # "" => auto-detect at transcribe time
+
+
+def resolve_device() -> str:
+    """Resolve the torch device. torch is imported lazily so the web app and DB
+    layer — which never use torch — are not forced to depend on it."""
+    if WHISPER_DEVICE:
+        return WHISPER_DEVICE
+    try:
+        import torch
+        return "cuda" if torch.cuda.is_available() else "cpu"
+    except ImportError:
+        return "cpu"
+
 WHISPER_LANGUAGE = os.environ.get("AGS_WHISPER_LANGUAGE", "en")
 # Run Whisper in float32. fp16 produces NaN logits on some CUDA/torch/GPU combos
 # (incl. this GTX 1660 + torch 2.13). Set AGS_FP16=1 only if you've verified it.
