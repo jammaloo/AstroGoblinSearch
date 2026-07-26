@@ -131,6 +131,10 @@ def run_retranscribe(limit: int | None = None) -> int:
     (oldest-first), upgrading them to the configured model. New/pending videos
     are left to a normal `run`. Returns count upgraded."""
     db.init_db()
+    with db.transaction() as conn:
+        recovered = db.recover_stale(conn)
+        if recovered:
+            print(f"[indexer] recovered {recovered} video(s) left 'processing' by a prior crashed run")
     target = current_model_label()
     if limit is None:
         limit = config.MAX_VIDEOS_PER_RUN
@@ -163,6 +167,9 @@ def run(limit: int | None = None) -> int:
     """Refresh the channel, then transcribe up to `limit` pending videos. Returns count done."""
     db.init_db()
     with db.transaction() as conn:
+        recovered = db.recover_stale(conn)
+        if recovered:
+            print(f"[indexer] recovered {recovered} video(s) left 'processing' by a prior crashed run")
         total = refresh_channel(conn)
     print(f"[indexer] channel has {total} videos")
 

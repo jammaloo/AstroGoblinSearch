@@ -145,6 +145,23 @@ def upsert_discovered_video(
 def set_video_processing(conn: sqlite3.Connection, video_id: int) -> None:
     conn.execute("UPDATE videos SET status = 'processing' WHERE id = ?", (video_id,))
 
+
+def mark_failed(conn: sqlite3.Connection, video_id: int, error: str) -> None:
+    conn.execute(
+        "UPDATE videos SET status = 'failed', error = ? WHERE id = ?",
+        (error[:500], video_id),
+    )
+
+
+def recover_stale(conn: sqlite3.Connection) -> int:
+    """Reset videos left 'processing' by a crashed/interrupted run back to
+    'pending' so they're retried. Returns the count recovered."""
+    cur = conn.execute(
+        "UPDATE videos SET status = 'pending' WHERE status = 'processing'"
+    )
+    return cur.rowcount
+
+
 def store_transcript(
     conn: sqlite3.Connection,
     video_id: int,
@@ -204,9 +221,11 @@ def update_video_meta(
 
 # --- reads ------------------------------------------------------------------
 def pending_videos(conn: sqlite3.Connection, limit: int) -> list[sqlite3.Row]:
-    """Pending videos ordered oldest-first (highest playlist position = oldest)."""
+    """Videos to (re)process, oldest-first (highest playlist position = oldest).
+    Includes 'failed' so transient errors (e.g. YouTube 403 throttling) are
+    retried on the next run instead of being permanently skipped."""
     sql = (
-        "SELECT * FROM videos WHERE status = 'pending' "
+        "SELECT * FROM videos WHERE status IN ('pending', 'failed') "
         "ORDER BY discovered_order DESC, id ASC"
     )
     params: tuple[Any, ...] = ()
