@@ -121,9 +121,9 @@ def index_one(video) -> None:
 
 def current_model_label() -> str:
     """The transcriber identity stamped on every transcript this run produces
-    (e.g. 'whisper.small'), so older transcriptions can be identified and
-    incrementally re-done when a better model is configured."""
-    return f"whisper.{config.WHISPER_MODEL}"
+    (e.g. 'faster-whisper.large-v3'), so older transcriptions can be identified
+    and incrementally re-done when a better model is configured."""
+    return f"faster-whisper.{config.WHISPER_MODEL}"
 
 
 def run_retranscribe(limit: int | None = None) -> int:

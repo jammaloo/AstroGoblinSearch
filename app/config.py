@@ -19,28 +19,27 @@ CHANNEL_URL = os.environ.get(
 )
 CHANNEL_NAME = os.environ.get("AGS_CHANNEL_NAME", "Astrogoblin")
 
-# --- Whisper ----------------------------------------------------------------
-# small = ~2 GB VRAM, fast + accurate on a GTX 1660. Bump to "medium" / "large"
-# for higher accuracy at the cost of speed and memory.
-WHISPER_MODEL = os.environ.get("AGS_WHISPER_MODEL", "small")
+# --- Transcription (faster-whisper / CTranslate2) ---------------------------
+# Whisper model id passed to faster-whisper. large-v3 = best accuracy.
+WHISPER_MODEL = os.environ.get("AGS_WHISPER_MODEL", "large-v3")
+# CTranslate2 compute type. int8 = quantized weights, fast + low VRAM on GPU.
+# Alternatives: int8_float16 (int8 weights, fp16 compute), float16, float32.
+COMPUTE_TYPE = os.environ.get("AGS_COMPUTE_TYPE", "int8")
 WHISPER_DEVICE = os.environ.get("AGS_DEVICE", "")  # "" => auto-detect at transcribe time
+WHISPER_LANGUAGE = os.environ.get("AGS_WHISPER_LANGUAGE", "en")
 
 
 def resolve_device() -> str:
-    """Resolve the torch device. torch is imported lazily so the web app and DB
-    layer — which never use torch — are not forced to depend on it."""
+    """Resolve the CTranslate2 device ('cuda'/'cpu'). ctranslate2 is imported
+    lazily so the web app and DB layer — which never transcribe — are not forced
+    to depend on it."""
     if WHISPER_DEVICE:
         return WHISPER_DEVICE
     try:
-        import torch
-        return "cuda" if torch.cuda.is_available() else "cpu"
+        import ctranslate2
+        return "cuda" if ctranslate2.get_cuda_device_count() > 0 else "cpu"
     except ImportError:
         return "cpu"
-
-WHISPER_LANGUAGE = os.environ.get("AGS_WHISPER_LANGUAGE", "en")
-# Run Whisper in float32. fp16 produces NaN logits on some CUDA/torch/GPU combos
-# (incl. this GTX 1660 + torch 2.13). Set AGS_FP16=1 only if you've verified it.
-WHISPER_FP16 = os.environ.get("AGS_FP16", "0") == "1"
 
 # --- Indexing ---------------------------------------------------------------
 # How many pending videos a single indexer run transcribes before stopping.

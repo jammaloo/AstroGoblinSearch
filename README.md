@@ -5,13 +5,13 @@ Search the spoken content of every video on the
 match links straight to the moment in the video where the words were said.
 
 A daily job discovers new uploads, downloads their audio, transcribes it with
-OpenAI's Whisper (GPU-accelerated), and stores the timecoded transcript in
-SQLite. A small Flask app provides full-text search over every transcript.
+Whisper large-v3 via faster-whisper (CTranslate2, int8, GPU-accelerated), and
+stores the timecoded transcript in SQLite. A small Flask app provides full-text
+search over every transcript.
 
 ## How it works
 
-```
-yt-dlp (channel) ──► oldest-first queue ──► download audio ──► Whisper ──► SQLite
+yt-dlp (channel) ──► oldest-first queue ──► download audio ──► faster-whisper ──► SQLite
                                                                           │
         ┌─────────────────────────────────────────────────────────────────┘
         ▼
@@ -41,12 +41,13 @@ oldest unprocessed video.
 ## Setup
 
 ```bash
-pip install -r requirements.txt          # openai-whisper, torch, flask
+pip install -r requirements.txt          # faster-whisper (CTranslate2), flask
 yt-dlp -U                                # ensure yt-dlp is up to date
 curl -fsSL https://deno.land/install.sh | sh   # installs ~/.deno/bin/deno
 ```
 
-Whisper downloads its model on first run (`~/.cache/whisper`, ~461 MB for `small`).
+faster-whisper downloads the model from HuggingFace on first run
+(`~/.cache/huggingface`, ~3 GB for `large-v3`).
 
 ## Running
 
@@ -63,20 +64,23 @@ python3 run_indexer.py -n 0
 python3 run_indexer.py -n 5
 ```
 
-With 255 videos and the `small` model on a GTX 1660, expect roughly 15–60 s per
-video. The daily cron keeps a bounded batch so each run finishes quickly; an
-unlimited run (`-n 0`) will chew through the whole backfill if left running.
+With 255 videos and `large-v3` int8 on a GTX 1660, expect roughly realtime-to-2×
+per video (a 15 min video transcribes in a few minutes). The daily cron keeps a
+bounded batch so each run finishes quickly; an unlimited run (`-n 0`) will chew
+through the whole backfill if left running.
 
 ### 2. Upgrade transcripts to a better model (incremental retranscribe)
 
-Every transcript records the model that produced it (e.g. `whisper.small`) in the
-`videos.model` column. To re-transcribe only the videos done with an older model,
-set the new model and run `--retranscribe` — it re-does done videos whose stored
-model differs from the current one, oldest-first:
+Every transcript records the model that produced it (e.g. `whisper.small` or
+`faster-whisper.large-v3`) in the `videos.model` column. To re-transcribe only
+the videos done with an older model, set the new model and run `--retranscribe`
+— it re-does done videos whose stored model differs from the current one,
+oldest-first. For example, re-doing the legacy `whisper.small` transcripts with
+the current `large-v3`:
 
 ```bash
-AGS_WHISPER_MODEL=medium python3 run_indexer.py --retranscribe      # next batch
-AGS_WHISPER_MODEL=medium python3 run_indexer.py --retranscribe -n 0 # all of them
+python3 run_indexer.py --retranscribe      # next batch (AGS_MAX_VIDEOS_PER_RUN)
+python3 run_indexer.py --retranscribe -n 0 # all of them
 ```
 
 New/pending videos are untouched — they're handled by the normal run/cron above.
@@ -107,9 +111,9 @@ The wrapper sets up `PATH` for cron's minimal environment, then runs the indexer
 | Variable | Default | Purpose |
 |---|---|---|
 | `AGS_CHANNEL_URL` | `…/@astrogoblinplays/videos` | Channel to index |
-| `AGS_WHISPER_MODEL` | `small` | Whisper model (`tiny`/`base`/`small`/`medium`/`large`) |
-| `AGS_DEVICE` | `cuda` if available else `cpu` | Torch device |
-| `AGS_FP16` | `0` | fp16 inference. Off by default — it yields NaN logits on some CUDA/GPU combos. Turn on only if verified. |
+| `AGS_WHISPER_MODEL` | `large-v3` | Whisper model id passed to faster-whisper (e.g. `large-v3`, `medium`) |
+| `AGS_COMPUTE_TYPE` | `int8` | CTranslate2 compute type (`int8`, `int8_float16`, `float16`, `float32`) |
+| `AGS_DEVICE` | `cuda` if available else `cpu` | CTranslate2 device |
 | `AGS_WHISPER_LANGUAGE` | `en` | Pinned language (faster, avoids misdetects) |
 | `AGS_MAX_VIDEOS_PER_RUN` | `10` | Per-run cap; `0` in the CLI means unlimited |
 | `AGS_WEB_PORT` | `5000` | Web server port |
