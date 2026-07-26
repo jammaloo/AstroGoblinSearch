@@ -21,6 +21,10 @@ def _youtube_link(youtube_id: str, start: float) -> str:
     return f"https://www.youtube.com/watch?v={youtube_id}&t={int(round(start))}s"
 
 
+def _thumb_url(youtube_id: str) -> str:
+    return f"https://i.ytimg.com/vi/{youtube_id}/hqdefault.jpg"
+
+
 def _render_snippet(snippet: str) -> Markup:
     """Escape FTS snippet text, then turn the \x01/\x02 match markers into <mark>."""
     safe = str(escape(snippet)).replace("\x01", "<mark>").replace("\x02", "</mark>")
@@ -48,6 +52,7 @@ def create_app() -> Flask:
                         "youtube_id": r["youtube_id"],
                         "title": r["title"],
                         "upload_date": r["upload_date"],
+                        "thumb": _thumb_url(r["youtube_id"]),
                         "matches": [],
                     }
                 match = {

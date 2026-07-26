@@ -40,11 +40,15 @@
     .result-summary { color: var(--muted); font-size: 0.95rem; margin: 22px 0 4px; }
     .result-summary b { color: var(--text); }
     .video { margin: 22px 0; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); overflow: hidden; }
-    .video-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; padding: 14px 16px; background: var(--panel-2); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+    .video-head { display: flex; align-items: center; gap: 14px; padding: 12px 14px; background: var(--panel-2); border-bottom: 1px solid var(--border); }
+    .video-head .thumb { flex: 0 0 auto; width: 120px; height: 68px; border-radius: 7px; overflow: hidden; background: #000; }
+    .video-head .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .video-head .thumb.no-thumb { visibility: hidden; }
+    .video-head .head-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1 1 auto; }
     .video-head .title { font-weight: 600; }
     .video-head .title a { color: var(--text); text-decoration: none; }
     .video-head .title a:hover { color: var(--link); }
-    .video-head .info { color: var(--muted); font-size: 0.82rem; white-space: nowrap; }
+    .video-head .info { color: var(--muted); font-size: 0.82rem; }
     .match { padding: 12px 16px; border-top: 1px solid var(--border); display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: start; }
     .match:first-of-type { border-top: none; }
     .ts a {
@@ -89,10 +93,15 @@
         {% for v in results %}
           <article class="video">
             <div class="video-head">
-              <span class="title">
-                <a href="https://www.youtube.com/watch?v={{ v.youtube_id }}" target="_blank" rel="noopener">{{ v.title }}</a>
-              </span>
-              <span class="info">{{ v.upload_date or '—' }} · {{ v.matches|length }} match(es)</span>
+              <a class="thumb" href="https://www.youtube.com/watch?v={{ v.youtube_id }}" target="_blank" rel="noopener">
+                <img src="{{ v.thumb }}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.closest('.thumb').classList.add('no-thumb')">
+              </a>
+              <div class="head-text">
+                <span class="title">
+                  <a href="https://www.youtube.com/watch?v={{ v.youtube_id }}" target="_blank" rel="noopener">{{ v.title }}</a>
+                </span>
+                <span class="info">{{ v.upload_date or '—' }} · {{ v.matches|length }} match(es)</span>
+              </div>
             </div>
             {% for m in v.matches %}
               <div class="match">
