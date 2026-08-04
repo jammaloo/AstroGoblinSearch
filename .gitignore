@@ -1,12 +1,15 @@
-# Data & caches
-/data/
+# Audio (transient: downloaded per-video, then deleted after transcription)
 /audio/
-__pycache__/
-*.pyc
-*.db
+
+# SQLite sidecar/lock files are transient — only the main DB is committed (via LFS).
 *.db-journal
 *.db-wal
 *.db-shm
+*.log
+
+# Python
+__pycache__/
+*.pyc
 
 # venv
 .venv/
