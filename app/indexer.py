@@ -160,6 +160,7 @@ def run_retranscribe(limit: int | None = None) -> int:
             with db.transaction() as conn:
                 db.mark_failed(conn, v["id"], str(e))
     print(f"[indexer] retranscribe finished: {ok}/{n} upgraded")
+    db.checkpoint()
     return ok
 
 
@@ -180,9 +181,9 @@ def run(limit: int | None = None) -> int:
     pending = [dict(r) for r in db.pending_videos(conn, limit)]
     conn.close()
 
-    n = len(pending)
     if n == 0:
         print("[indexer] nothing pending — up to date")
+        db.checkpoint()
         return 0
     print(f"[indexer] processing {n} pending video(s) oldest-first")
 
@@ -197,4 +198,5 @@ def run(limit: int | None = None) -> int:
             with db.transaction() as conn:
                 db.mark_failed(conn, v["id"], str(e))
     print(f"[indexer] finished: {ok}/{n} succeeded")
+    db.checkpoint()
     return ok

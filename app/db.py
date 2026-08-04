@@ -85,6 +85,14 @@ def init_db() -> None:
         _migrate(conn)
 
 
+def checkpoint() -> None:
+    """Fold the WAL back into the main database file. Called at the end of an
+    indexer run so a read-only web reader (e.g. the PHP UI, possibly running as
+    a different user without WAL file access) sees the latest transcripts."""
+    with get_conn() as conn:
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+
+
 def _migrate(conn: sqlite3.Connection) -> None:
     """Additive migrations for databases created before a feature shipped."""
     cols = {r["name"] for r in conn.execute("PRAGMA table_info(videos)")}
@@ -104,23 +112,6 @@ def normalize(text: str) -> str:
         return ""
     text = _NONWORD.sub(" ", text.lower())
     return _WS.sub(" ", text).strip()
-
-
-# --- FTS query building -----------------------------------------------------
-_TOKEN = re.compile(r"[A-Za-z0-9]+")
-
-
-def build_fts_query(q: str) -> str | None:
-    """Turn free-form user input into a safe FTS5 query.
-
-    Splits into alphanumeric tokens and ANDs them as *prefix* terms, so a search
-    for "final boss" matches segments containing words starting with both. Returns
-    None when there is nothing searchable.
-    """
-    tokens = _TOKEN.findall(q or "")
-    if not tokens:
-        return None
-    return " ".join(f"{t.lower()}*" for t in tokens)
 
 
 # --- writes -----------------------------------------------------------------
@@ -248,58 +239,6 @@ def retranscribe_candidates(conn: sqlite3.Connection, current_model: str, limit:
         sql += " LIMIT ?"
         params = (current_model, limit)
     return conn.execute(sql, params).fetchall()
-
-
-def search_segments(query: str, *, per_video_limit: int = 0) -> list[sqlite3.Row]:
-    """Return matching segments with their video, newest upload first.
-
-    per_video_limit caps how many matches are returned for a single video when
-    positive (0 = unlimited, show every match).
-    """
-    fts = build_fts_query(query)
-    if not fts:
-        return []
-    sql = """
-        SELECT s.id, s.video_id, s.start, s.end, s.text,
-               snippet(segments_fts, 0, '\x01', '\x02', '…', 16) AS snippet,
-               v.youtube_id, v.title, v.upload_date, v.duration
-        FROM segments_fts
-        JOIN segments s ON s.id = segments_fts.rowid
-        JOIN videos v   ON v.id = s.video_id
-        WHERE segments_fts MATCH ? AND v.status = 'done'
-        ORDER BY v.upload_date DESC, v.id DESC, s.start ASC
-    """
-    rows = get_conn().execute(sql, (fts,)).fetchall()
-
-    if per_video_limit and per_video_limit > 0:
-        kept: list[sqlite3.Row] = []
-        counts: dict[int, int] = {}
-        for r in rows:
-            counts[r["video_id"]] = counts.get(r["video_id"], 0) + 1
-            if counts[r["video_id"]] <= per_video_limit:
-                kept.append(r)
-        return kept
-    return rows
-
-
-def stats() -> dict[str, Any]:
-    conn = get_conn()
-    total = conn.execute("SELECT COUNT(*) AS c FROM videos").fetchone()["c"]
-    done = conn.execute("SELECT COUNT(*) AS c FROM videos WHERE status = 'done'").fetchone()["c"]
-    pending = conn.execute("SELECT COUNT(*) AS c FROM videos WHERE status = 'pending'").fetchone()["c"]
-    failed = conn.execute("SELECT COUNT(*) AS c FROM videos WHERE status = 'failed'").fetchone()["c"]
-    last = conn.execute(
-        "SELECT title FROM videos WHERE status = 'done' "
-        "ORDER BY indexed_at DESC, id DESC LIMIT 1"
-    ).fetchone()
-    return {
-        "total": total,
-        "done": done,
-        "pending": pending,
-        "failed": failed,
-        "last_indexed": last["title"] if last else None,
-    }
-
 
 def get_video(conn: sqlite3.Connection, video_id: int) -> sqlite3.Row | None:
     return conn.execute("SELECT * FROM videos WHERE id = ?", (video_id,)).fetchone()

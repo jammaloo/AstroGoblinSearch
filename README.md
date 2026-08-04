@@ -6,8 +6,8 @@ match links straight to the moment in the video where the words were said.
 
 A daily job discovers new uploads, downloads their audio, transcribes it with
 Whisper large-v3 via faster-whisper (CTranslate2, int8, GPU-accelerated), and
-stores the timecoded transcript in SQLite. A small Flask app provides full-text
-search over every transcript.
+stores the timecoded transcript in SQLite. A single PHP page provides full-text
+search over every transcript — no Python runtime needed on the web host.
 
 ## How it works
 
@@ -15,7 +15,7 @@ yt-dlp (channel) ──► oldest-first queue ──► download audio ──►
                                                                           │
         ┌─────────────────────────────────────────────────────────────────┘
         ▼
- Flask UI ── FTS5 search ──► matches with timestamps ──► YouTube links (?t=Ns)
+ PHP UI ── FTS5 search ──► matches with timestamps ──► YouTube links (?t=Ns)
 ```
 
 - **`videos.clean_text`** — the full clean transcript of a video (the searchable text).
@@ -31,6 +31,8 @@ oldest unprocessed video.
 
 ## Requirements
 
+**Indexing host (Python, run via cron):**
+
 - Python 3.10+
 - An NVIDIA GPU is recommended (Whisper on CPU is ~10× slower) but not required
 - `ffmpeg`
@@ -38,10 +40,15 @@ oldest unprocessed video.
 - [`deno`](https://deno.land/) — current yt-dlp needs a JS runtime to extract
   YouTube audio. The indexer auto-discovers deno at `~/.deno/bin`.
 
+**Web host (PHP only):**
+
+- PHP 8.0+ with the `PDO_SQLITE` extension (standard on most hosts)
+- Read access to `data/transcripts.db`
+
 ## Setup
 
 ```bash
-pip install -r requirements.txt          # faster-whisper (CTranslate2), flask
+pip install -r requirements.txt          # faster-whisper (CTranslate2) — indexer only
 yt-dlp -U                                # ensure yt-dlp is up to date
 curl -fsSL https://deno.land/install.sh | sh   # installs ~/.deno/bin/deno
 ```
@@ -85,11 +92,17 @@ python3 run_indexer.py --retranscribe -n 0 # all of them
 
 New/pending videos are untouched — they're handled by the normal run/cron above.
 
-### 3. Run the search UI
+### 3. Serve the search UI (PHP)
+
+Point your web server's document root at `web/` (Apache mod_php or nginx + php-fpm).
+`web/index.php` reads `data/transcripts.db` (path overridable via `AGS_DB_PATH`).
+The web host needs only PHP with `PDO_SQLITE` and read access to the database —
+no Python.
+
+To try it locally without a web server:
 
 ```bash
-python3 run_server.py
-# open http://127.0.0.1:5000
+php -S 127.0.0.1:8000 -t web     # open http://127.0.0.1:8000
 ```
 
 ### 4. Daily cron
@@ -116,7 +129,7 @@ The wrapper sets up `PATH` for cron's minimal environment, then runs the indexer
 | `AGS_DEVICE` | `cuda` if available else `cpu` | CTranslate2 device |
 | `AGS_WHISPER_LANGUAGE` | `en` | Pinned language (faster, avoids misdetects) |
 | `AGS_MAX_VIDEOS_PER_RUN` | `10` | Per-run cap; `0` in the CLI means unlimited |
-| `AGS_WEB_PORT` | `5000` | Web server port |
+| `AGS_DB_PATH` | `./data/transcripts.db` | Path to the DB (PHP UI); override when `web/` is deployed elsewhere |
 | `AGS_DATA_DIR` / `AGS_AUDIO_DIR` | `./data`, `./audio` | Storage locations |
 
 ## Project layout
@@ -124,13 +137,10 @@ The wrapper sets up `PATH` for cron's minimal environment, then runs the indexer
 ```
 app/
   config.py      # all settings (env-overridable)
-  db.py          # SQLite schema + FTS5 search
+  db.py          # SQLite schema + writes (the indexer's persistence layer)
   channel.py     # discover channel videos (oldest-first queue)
-  transcribe.py  # Whisper wrapper (model loaded once)
+  transcribe.py  # faster-whisper wrapper (model loaded once)
   indexer.py     # download -> transcribe -> store pipeline
-  web.py         # Flask search app
-templates/index.html
+web/index.php    # PHP search UI (reads the SQLite DB; no Python needed)
 run_indexer.py   # CLI: index videos (cron target via cron_index.sh)
-run_server.py    # CLI: run the web UI
 cron_index.sh    # cron-friendly wrapper for run_indexer.py
-```
