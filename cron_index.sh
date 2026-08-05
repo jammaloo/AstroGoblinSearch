@@ -24,5 +24,8 @@ export PATH="$HOME/.local/bin:$HOME/.deno/bin:$PATH"
 export AGS_COOKIES_FROM_BROWSER="${AGS_COOKIES_FROM_BROWSER:-firefox}"
 
 echo "[$(date -Iseconds)] indexer run start"
-exec python3 run_indexer.py "$@"
-exec ./pushIt.sh
+python3 run_indexer.py "$@"
+
+# Publish the freshly transcribed transcripts: commit, push, and redeploy.
+# Runs only if run_indexer.py succeeded (set -e aborts on failure).
+./pushIt.sh
