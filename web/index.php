@@ -85,6 +85,18 @@ function render_like_snippet(string $text, array $tokens): string {
     return $esc;
 }
 
+/** Absolute base URL of this site (e.g. https://search.astrogoblin.jammaloo.com).
+ *  Social-media crawlers do not resolve relative URLs, so og:image / twitter:image
+ *  must be absolute. Derived from the request so it's correct in any deployment. */
+function og_base_url(): string {
+    $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+        || (($_SERVER['SERVER_PORT'] ?? '') == 443)
+        || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
+    $scheme = $https ? 'https' : 'http';
+    $host   = $_SERVER['HTTP_HOST'] ?? $_SERVER['SERVER_NAME'] ?? 'localhost';
+    return $scheme . '://' . $host;
+}
+
 // --- Search ----------------------------------------------------------------
 /**
  * @return array{rows: array<int, array>, fallback: bool}
@@ -213,6 +225,21 @@ function e(?string $s): string {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>astrogoblin video search</title>
+  <meta property="og:title" content="astrogoblin video search">
+  <meta property="og:description" content="Search the spoken content of every Astrogoblin video — matches link straight to the moment in the video where the words were said.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="<?= e(og_base_url()) ?>/">
+  <meta property="og:site_name" content="<?= e(CHANNEL_NAME) ?>">
+  <meta property="og:image" content="<?= e(og_base_url()) ?>/logo-og.png">
+  <meta property="og:image:alt" content="<?= e(CHANNEL_NAME) ?> logo">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="1200">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="astrogoblin video search">
+  <meta name="twitter:description" content="Search the spoken content of every Astrogoblin video — matches link straight to the moment where the words were said.">
+  <meta name="twitter:image" content="<?= e(og_base_url()) ?>/logo-og.png">
+  <meta name="twitter:image:alt" content="<?= e(CHANNEL_NAME) ?> logo">
   <style>
     :root {
       --bg: #0f1117; --panel: #171a23; --panel-2: #1f2330; --border: #2a2f3d;
