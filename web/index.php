@@ -212,7 +212,7 @@ function e(?string $s): string {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title><?= e(CHANNEL_NAME) ?> — Transcript Search</title>
+  <title>astrogoblin video search</title>
   <style>
     :root {
       --bg: #0f1117; --panel: #171a23; --panel-2: #1f2330; --border: #2a2f3d;
@@ -223,8 +223,9 @@ function e(?string $s): string {
     body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); line-height: 1.55; }
     header.top { border-bottom: 1px solid var(--border); padding: 22px 24px; background: linear-gradient(180deg, #161922, var(--bg)); }
     .wrap { max-width: 880px; margin: 0 auto; padding: 0 20px; }
-    header.top h1 { margin: 0 0 4px; font-size: 1.45rem; letter-spacing: -0.01em; }
-    header.top h1 .ac { color: var(--accent); }
+header.top .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
+header.top .brand .logo { width: 44px; height: 44px; flex: 0 0 auto; display: block; border-radius: 9px; }
+header.top h1 { margin: 0; font-size: 1.45rem; letter-spacing: -0.01em; }
     .meta { color: var(--muted); font-size: 0.9rem; }
     .meta b { color: var(--text); font-weight: 600; }
     .search { padding: 30px 0 8px; }
@@ -261,7 +262,10 @@ function e(?string $s): string {
 <body>
   <header class="top">
     <div class="wrap">
-      <h1><span class="ac"><?= e(CHANNEL_NAME) ?></span> · Transcript Search</h1>
+      <div class="brand">
+        <img src="logo.png" alt="" width="44" height="44" class="logo">
+        <h1>astrogoblin video search</h1>
+      </div>
 <?php if ($db_error !== null): ?>
       <div class="meta">⚠ Database error: <?= e($db_error) ?></div>
 <?php else: ?>
