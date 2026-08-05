@@ -131,6 +131,7 @@ The wrapper sets up `PATH` for cron's minimal environment, then runs the indexer
 | `AGS_MAX_VIDEOS_PER_RUN` | `10` | Per-run cap; `0` in the CLI means unlimited |
 | `AGS_DB_PATH` | `./data/transcripts.db` | Path to the DB (PHP UI); override when `web/` is deployed elsewhere |
 | `AGS_DATA_DIR` / `AGS_AUDIO_DIR` | `./data`, `./audio` | Storage locations |
+| `AGS_COOKIES_FROM_BROWSER` | `firefox` | Browser yt-dlp reads YouTube cookies from for age-restricted videos (`firefox`/`chrome`/`brave`); `""` disables |
 
 ## Project layout
 

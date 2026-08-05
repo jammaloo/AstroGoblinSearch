@@ -49,8 +49,9 @@ MAX_VIDEOS_PER_RUN = int(os.environ.get("AGS_MAX_VIDEOS_PER_RUN", "10"))
 
 # Browser whose cookies yt-dlp reads to authenticate age-restricted downloads
 # (e.g. "firefox", "chrome", "brave"). The browser must be logged into YouTube.
-# Empty = no cookies passed to yt-dlp (age-restricted videos will be skipped).
-COOKIES_FROM_BROWSER = os.environ.get("AGS_COOKIES_FROM_BROWSER", "")
+# Defaults to "firefox"; set AGS_COOKIES_FROM_BROWSER="" to disable, or to
+# another browser if that's where you're signed in.
+COOKIES_FROM_BROWSER = os.environ.get("AGS_COOKIES_FROM_BROWSER", "firefox")
 
 # --- Web --------------------------------------------------------------------
 WEB_HOST = os.environ.get("AGS_WEB_HOST", "127.0.0.1")
