@@ -25,3 +25,4 @@ export AGS_COOKIES_FROM_BROWSER="${AGS_COOKIES_FROM_BROWSER:-firefox}"
 
 echo "[$(date -Iseconds)] indexer run start"
 exec python3 run_indexer.py "$@"
+exec ./pushIt.sh
