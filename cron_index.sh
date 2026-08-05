@@ -19,6 +19,9 @@ cd "$(dirname "$SOURCE")"
 #   ~/.local/bin  -> yt-dlp, whisper
 #   ~/.deno/bin   -> deno (required by current yt-dlp for YouTube extraction)
 export PATH="$HOME/.local/bin:$HOME/.deno/bin:$PATH"
+# yt-dlp reads YouTube cookies from this browser to fetch age-restricted videos.
+# Override by exporting AGS_COOKIES_FROM_BROWSER before invoking this script.
+export AGS_COOKIES_FROM_BROWSER="${AGS_COOKIES_FROM_BROWSER:-firefox}"
 
 echo "[$(date -Iseconds)] indexer run start"
 exec python3 run_indexer.py "$@"

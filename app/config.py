@@ -47,6 +47,11 @@ def resolve_device() -> str:
 # backfill run. Oldest pending video is always processed first.
 MAX_VIDEOS_PER_RUN = int(os.environ.get("AGS_MAX_VIDEOS_PER_RUN", "10"))
 
+# Browser whose cookies yt-dlp reads to authenticate age-restricted downloads
+# (e.g. "firefox", "chrome", "brave"). The browser must be logged into YouTube.
+# Empty = no cookies passed to yt-dlp (age-restricted videos will be skipped).
+COOKIES_FROM_BROWSER = os.environ.get("AGS_COOKIES_FROM_BROWSER", "")
+
 # --- Web --------------------------------------------------------------------
 WEB_HOST = os.environ.get("AGS_WEB_HOST", "127.0.0.1")
 WEB_PORT = int(os.environ.get("AGS_WEB_PORT", "5000"))

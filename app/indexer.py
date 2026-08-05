@@ -27,6 +27,11 @@ def _media_env() -> dict:
         env["PATH"] = deno_bin + os.pathsep + env.get("PATH", "")
     return env
 
+def _cookies_args() -> list[str]:
+    """yt-dlp cookie args when AGS_COOKIES_FROM_BROWSER is set."""
+    browser = config.COOKIES_FROM_BROWSER
+    return ["--cookies-from-browser", browser] if browser else []
+
 def refresh_channel(conn) -> int:
     """Discover current channel videos and record any we have not seen. Returns count."""
     videos = channel.discover_videos()
@@ -40,7 +45,7 @@ def _fetch_meta(youtube_id: str) -> dict:
     url = YOUTUBE_WATCH.format(id=youtube_id)
     proc = subprocess.run(
         ["yt-dlp", "--no-download", "--no-playlist", "--no-warnings",
-         "--print", "%(upload_date)s|%(duration)s|%(channel)s", url],
+         "--print", "%(upload_date)s|%(duration)s|%(channel)s", *_cookies_args(), url],
         capture_output=True, text=True, check=False, env=_media_env(),
     )
     meta = {"upload_date": None, "duration": None, "channel": None}
@@ -74,6 +79,7 @@ def download_audio(youtube_id: str) -> tuple[Path, dict]:
             "--no-progress",
             "--retries", "5",
             "-o", outtmpl,
+            *_cookies_args(),
             YOUTUBE_WATCH.format(id=youtube_id),
         ],
         capture_output=True,
