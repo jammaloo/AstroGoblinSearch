@@ -180,6 +180,7 @@ def run(limit: int | None = None) -> int:
     conn = db.get_conn()
     pending = [dict(r) for r in db.pending_videos(conn, limit)]
     conn.close()
+    n = len(pending)
 
     if n == 0:
         print("[indexer] nothing pending — up to date")
