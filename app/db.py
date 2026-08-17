@@ -85,12 +85,29 @@ def init_db() -> None:
         _migrate(conn)
 
 
-def checkpoint() -> None:
+def checkpoint() -> bool:
     """Fold the WAL back into the main database file. Called at the end of an
     indexer run so a read-only web reader (e.g. the PHP UI, possibly running as
-    a different user without WAL file access) sees the latest transcripts."""
-    with get_conn() as conn:
-        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    a different user without WAL file access) sees the latest transcripts.
+    Returns False when a concurrent reader blocked a full checkpoint, leaving
+    some committed writes only in the -wal sidecar file."""
+    conn = get_conn()
+    try:
+        busy, _log, _checkpointed = conn.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+        return not busy
+    finally:
+        conn.close()
+
+
+def quick_check() -> list[str]:
+    """Cheap structural self-check: empty list when healthy, one line per
+    problem otherwise. A torn UNIQUE index once went unnoticed here and
+    silently defeated the youtube_id conflict check, duplicating a video."""
+    conn = get_conn()
+    try:
+        return [row[0] for row in conn.execute("PRAGMA quick_check") if row[0] != "ok"]
+    finally:
+        conn.close()
 
 
 def _migrate(conn: sqlite3.Connection) -> None:
@@ -120,17 +137,30 @@ def upsert_discovered_video(
     youtube_id: str,
     title: str,
     discovered_order: int,
-) -> None:
-    """Record a video discovered on the channel if we have not seen it before."""
-    conn.execute(
-        """INSERT INTO videos (youtube_id, title, discovered_order)
-           VALUES (?, ?, ?)
-           ON CONFLICT(youtube_id) DO UPDATE SET
-             title = excluded.title,
-             discovered_order = excluded.discovered_order
-           WHERE videos.status = 'pending'""",
-        (youtube_id, title, discovered_order),
-    )
+) -> bool:
+    """Record a video discovered on the channel if we have not seen it before.
+    Returns True when a row was inserted or updated, False on a no-op.
+
+    Check-then-act on purpose, not INSERT ... ON CONFLICT: on this AUTOINCREMENT
+    table every attempted upsert allocates a rowid — bumping sqlite_sequence —
+    before the youtube_id conflict is detected, which dirtied the database on
+    every cron run and earned an empty 'New Transcriptions' commit per hour."""
+    row = conn.execute(
+        "SELECT id, status FROM videos WHERE youtube_id = ?", (youtube_id,)
+    ).fetchone()
+    if row is None:
+        conn.execute(
+            "INSERT INTO videos (youtube_id, title, discovered_order) VALUES (?, ?, ?)",
+            (youtube_id, title, discovered_order),
+        )
+        return True
+    if row["status"] == "pending":
+        conn.execute(
+            "UPDATE videos SET title = ?, discovered_order = ? WHERE id = ?",
+            (title, discovered_order, row["id"]),
+        )
+        return True
+    return False
 
 
 def set_video_processing(conn: sqlite3.Connection, video_id: int) -> None:

@@ -132,6 +132,21 @@ def current_model_label() -> str:
     return f"faster-whisper.{config.WHISPER_MODEL}"
 
 
+def _finish() -> None:
+    """Checkpoint the WAL and verify database integrity at the end of a run.
+    A torn index once surfaced only as impossible stats ("263 of 262 indexed")
+    after silently duplicating a video, so damage is reported the run it happens."""
+    if not db.checkpoint():
+        print("[indexer] WARNING: WAL checkpoint incomplete — a concurrent reader held "
+              "the database; latest writes remain in the -wal sidecar file")
+    problems = db.quick_check()
+    if problems:
+        print("[indexer] WARNING: database integrity check failed "
+              "(back up data/, then consider REINDEX):")
+        for line in problems:
+            print(f"  {line}")
+
+
 def run_retranscribe(limit: int | None = None) -> int:
     """Re-transcribe done videos whose stored model differs from the current one
     (oldest-first), upgrading them to the configured model. New/pending videos
@@ -166,7 +181,7 @@ def run_retranscribe(limit: int | None = None) -> int:
             with db.transaction() as conn:
                 db.mark_failed(conn, v["id"], str(e))
     print(f"[indexer] retranscribe finished: {ok}/{n} upgraded")
-    db.checkpoint()
+    _finish()
     return ok
 
 
@@ -189,8 +204,8 @@ def run(limit: int | None = None) -> int:
     n = len(pending)
 
     if n == 0:
-        print("[indexer] nothing pending — up to date")
-        db.checkpoint()
+        print("[indexer] nothing pending— up to date")
+        _finish()
         return 0
     print(f"[indexer] processing {n} pending video(s) oldest-first")
 
@@ -205,5 +220,5 @@ def run(limit: int | None = None) -> int:
             with db.transaction() as conn:
                 db.mark_failed(conn, v["id"], str(e))
     print(f"[indexer] finished: {ok}/{n} succeeded")
-    db.checkpoint()
+    _finish()
     return ok
