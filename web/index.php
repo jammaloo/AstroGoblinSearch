@@ -87,29 +87,37 @@ function render_like_snippet(string $text, array $tokens): string {
 
 /** Absolute base URL of this site (e.g. https://search.astrogoblin.jammaloo.com).
  *  Social-media crawlers do not resolve relative URLs, so og:image / twitter:image
- *  must be absolute. Derived from the request so it's correct in any deployment. */
+ *  must be absolute. Set AGS_BASE_URL when deployed (avoids trusting the request);
+ *  otherwise it is derived from the request, with the host restricted to hostname
+ *  characters so a spoofed Host header cannot smuggle anything into these URLs. */
 function og_base_url(): string {
+    if (($env = getenv('AGS_BASE_URL')) !== false && $env !== '') {
+        return rtrim($env, '/');
+    }
     $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
         || (($_SERVER['SERVER_PORT'] ?? '') == 443)
         || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
     $scheme = $https ? 'https' : 'http';
-    $host   = $_SERVER['HTTP_HOST'] ?? $_SERVER['SERVER_NAME'] ?? 'localhost';
+    $host = preg_replace('/[^A-Za-z0-9.\-:]/', '', $_SERVER['HTTP_HOST'] ?? $_SERVER['SERVER_NAME'] ?? 'localhost') ?: 'localhost';
     return $scheme . '://' . $host;
 }
 
 // --- Search ----------------------------------------------------------------
 /**
- * @return array{rows: array<int, array>, fallback: bool}
+ * @return array{rows: array<int, array>, fallback: bool, capped: bool}
  *     rows each carry: video_id, start, end, snippet_html, youtube_id, title,
  *     upload_date — ordered newest upload first, then by segment start.
+ *     capped is true when more than SEARCH_CAP segments matched; only the
+ *     first SEARCH_CAP rows are returned so broad queries stay bounded.
  */
 function search(PDO $db, string $query): array {
     preg_match_all('/[A-Za-z0-9]+/', $query, $m);
     $tokens = array_map('strtolower', $m[0]);
     if (!$tokens) {
-        return ['rows' => [], 'fallback' => false];
+        return ['rows' => [], 'fallback' => false, 'capped' => false];
     }
 
+    $cap = 1000;  // segment matches returned per query — bounds page size/memory
     $order = 'ORDER BY v.upload_date DESC, v.id DESC, s.start ASC';
     $from  = 'FROM segments s JOIN videos v ON v.id = s.video_id';
 
@@ -120,7 +128,7 @@ function search(PDO $db, string $query): array {
              . "v.youtube_id, v.title, v.upload_date "
              . "FROM segments_fts JOIN segments s ON s.id = segments_fts.rowid "
              . "JOIN videos v ON v.id = s.video_id "
-             . "WHERE segments_fts MATCH :q AND v.status = 'done' " . $order;
+             . "WHERE segments_fts MATCH :q AND v.status = 'done' " . $order . ' LIMIT ' . ($cap + 1);
         $st = $db->prepare($sql);
         $st->execute([':q' => build_fts_query($query)]);
         $rows = [];
@@ -134,7 +142,7 @@ function search(PDO $db, string $query): array {
                 'upload_date' => $r['upload_date'],
             ];
         }
-        return ['rows' => $rows, 'fallback' => false];
+        return ['rows' => array_slice($rows, 0, $cap), 'fallback' => false, 'capped' => count($rows) > $cap];
     } catch (Throwable $e) {
         // FTS5 unavailable on this host — fall back to a portable LIKE scan.
     }
@@ -148,7 +156,7 @@ function search(PDO $db, string $query): array {
         $i++;
     }
     $sql = "SELECT s.video_id, s.start, s.end, s.text, v.youtube_id, v.title, v.upload_date "
-         . "$from $where $order";
+         . "$from $where $order LIMIT " . ($cap + 1);
     $st = $db->prepare($sql);
     $st->execute($params);
     $rows = [];
@@ -162,26 +170,42 @@ function search(PDO $db, string $query): array {
             'upload_date' => $r['upload_date'],
         ];
     }
-    return ['rows' => $rows, 'fallback' => true];
+    return ['rows' => array_slice($rows, 0, $cap), 'fallback' => true, 'capped' => count($rows) > $cap];
 }
 
 function get_stats(PDO $db): array {
-    $count = fn(string $where): int => (int)$db->query("SELECT COUNT(*) FROM videos $where")->fetchColumn();
+    // One aggregate statement = one consistent snapshot. Separate COUNTs each
+    // get their own snapshot, so an indexer commit landing between them could
+    // render impossible numbers ("263 of 262") even on a healthy database.
+    $r = $db->query(
+        "SELECT COUNT(*) AS total,
+                COALESCE(SUM(status = 'done'), 0) AS done,
+                COALESCE(SUM(status = 'pending'), 0) AS pending,
+                COALESCE(SUM(status = 'failed'), 0) AS failed
+         FROM videos"
+    )->fetch();
     $last = $db->query("SELECT title FROM videos WHERE status = 'done' ORDER BY indexed_at DESC, id DESC LIMIT 1")->fetchColumn();
     return [
-        'total' => $count(''),
-        'done' => $count("WHERE status = 'done'"),
-        'pending' => $count("WHERE status = 'pending'"),
-        'failed' => $count("WHERE status = 'failed'"),
+        'total' => (int)$r['total'],
+        'done' => (int)$r['done'],
+        'pending' => (int)$r['pending'],
+        'failed' => (int)$r['failed'],
         'last' => $last === false ? null : $last,
     ];
 }
 
 // --- Request handling ------------------------------------------------------
-$query = isset($_GET['q']) ? trim($_GET['q']) : '';
+header('Content-Type: text/html; charset=utf-8');
+header('X-Content-Type-Options: nosniff');
+
+// is_string guards against ?q[]=x array syntax, which would otherwise throw a
+// TypeError (it is not inside the try/catch below). 256 chars is beyond any
+// real query; longer input is just load.
+$query = (isset($_GET['q']) && is_string($_GET['q'])) ? trim(mb_substr($_GET['q'], 0, 256, 'UTF-8')) : '';
 $results = [];        // grouped: [['youtube_id','title','upload_date','matches'=>[...]]]
 $match_count = 0;
 $fallback = false;
+$capped = false;      // search matched more segments than shown (cap reached)
 $db_error = null;
 
 try {
@@ -190,6 +214,7 @@ try {
     if ($query !== '') {
         $searchResult = search($db, $query);
         $fallback = $searchResult['fallback'];
+        $capped = $searchResult['capped'];
         $videos = [];
         foreach ($searchResult['rows'] as $r) {
             $vid = $r['video_id'];
@@ -211,7 +236,10 @@ try {
         $results = array_values($videos);
     }
 } catch (Throwable $e) {
-    $db_error = $e->getMessage();
+    // Full detail (which can include filesystem paths) goes to the log only;
+    // the public page shows a generic message.
+    error_log('[AstroGoblinSearch] ' . $e->getMessage());
+    $db_error = 'temporarily unavailable — try again shortly';
     $stats = ['total' => 0, 'done' => 0, 'pending' => 0, 'failed' => 0, 'last' => null];
 }
 
@@ -315,7 +343,7 @@ header.top h1 { margin: 0; font-size: 1.45rem; letter-spacing: -0.01em; }
 
 <?php if ($query !== ''): ?>
 <?php if ($results): ?>
-      <div class="result-summary"><b><?= $match_count ?></b> match(es) in <b><?= count($results) ?></b> video(s) for “<?= e($query) ?>”</div>
+      <div class="result-summary"><b><?= $match_count ?></b> match(es) in <b><?= count($results) ?></b> video(s) for “<?= e($query) ?>”<?php if ($capped): ?> — showing the first 1,000 matches<?php endif; ?></div>
 <?php foreach ($results as $v): ?>
       <article class="video">
         <div class="video-head">
